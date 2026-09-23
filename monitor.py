@@ -6,7 +6,7 @@ CR_API_KEY = os.environ["CR_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-url = f"https://api.clashroyale.com/v1/players/{requests.utils.quote(PLAYER_TAG, safe='')}/battlelog"
+url = f"https://proxy.royaleapi.dev/v1/players/{requests.utils.quote(PLAYER_TAG, safe='')}/battlelog"
 
 headers = {
     "Authorization": f"Bearer {CR_API_KEY}"
