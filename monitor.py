@@ -1,20 +1,18 @@
 import os
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 PLAYER_TAG = "#QRG8YPJU"
 
 # Considera batalhas dos últimos 10 minutos.
-# Como o GitHub roda a cada 5 minutos, isso dá uma margem para atrasos.
-MAX_BATTLE_AGE_SECONDS = 1800
+MAX_BATTLE_AGE_SECONDS = 600
 
 CR_API_KEY = os.environ["CR_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-
 # ============================================================
-# 1. Consultar o histórico de batalhas do Clash Royale
+# 1. CONSULTAR HISTÓRICO DE BATALHAS
 # ============================================================
 
 url = (
@@ -40,9 +38,8 @@ if not battles:
     print("Nenhuma batalha encontrada.")
     raise SystemExit(0)
 
-
 # ============================================================
-# 2. Pegar a batalha mais recente
+# 2. PEGAR A BATALHA MAIS RECENTE
 # ============================================================
 
 latest_battle = battles[0]
@@ -53,9 +50,10 @@ if not battle_time:
     print("A batalha mais recente não possui battleTime.")
     raise SystemExit(0)
 
+print(f"Batalha encontrada: {battle_time}")
 
 # ============================================================
-# 3. Converter o horário da batalha
+# 3. CONVERTER HORÁRIO DA BATALHA
 # ============================================================
 
 try:
@@ -65,6 +63,7 @@ try:
     ).replace(tzinfo=timezone.utc)
 
 except ValueError:
+
     try:
         battle_datetime = datetime.strptime(
             battle_time,
@@ -75,37 +74,32 @@ except ValueError:
         print(f"Formato de battleTime não reconhecido: {battle_time}")
         raise SystemExit(0)
 
-
 # ============================================================
-# 4. Verificar se a batalha é recente
+# 4. VERIFICAR QUANTO TEMPO PASSOU
 # ============================================================
 
 now = datetime.now(timezone.utc)
 
-seconds_ago = (
-    now - battle_datetime
-).total_seconds()
+seconds_ago = (now - battle_datetime).total_seconds()
 
-print(f"Última batalha: {battle_time}")
-print(f"Aconteceu há aproximadamente {seconds_ago:.0f} segundos.")
-
+print(
+    f"A batalha aconteceu há aproximadamente "
+    f"{seconds_ago:.0f} segundos."
+)
 
 if seconds_ago < 0:
     print("A batalha possui horário futuro. Ignorando.")
     raise SystemExit(0)
 
-
 if seconds_ago > MAX_BATTLE_AGE_SECONDS:
     print("A última batalha não é recente. Nada a fazer.")
     raise SystemExit(0)
 
-
 # ============================================================
-# 5. Verificar se essa batalha já foi notificada
+# 5. VERIFICAR SE JÁ FOI NOTIFICADA
 # ============================================================
 
 battle_id = battle_time
-
 state_file = "last_battle.txt"
 
 try:
@@ -115,17 +109,28 @@ try:
 except FileNotFoundError:
     last_battle = ""
 
-
 if battle_id == last_battle:
     print("Essa batalha já foi notificada.")
     raise SystemExit(0)
 
+# ============================================================
+# 6. CONVERTER HORÁRIO PARA BRASÍLIA
+# ============================================================
+
+brasilia_time = battle_datetime - timedelta(hours=3)
+
+horario = brasilia_time.strftime("%H:%M:%S")
 
 # ============================================================
-# 6. Enviar mensagem para o Telegram
+# 7. ENVIAR NOTIFICAÇÃO PARA O TELEGRAM
 # ============================================================
 
-message = "🚨 O jogador entrou em uma batalha no Clash Royale! 👀"
+message = (
+    "🚨 BATALHA DETECTADA! 🚨\n\n"
+    "👤 O jogador entrou em batalha!\n"
+    f"🕐 Início: {horario}\n\n"
+    "👀 ENTRA NO CLASH AGORA!"
+)
 
 telegram_url = (
     f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -142,14 +147,13 @@ telegram_response = requests.post(
 
 telegram_response.raise_for_status()
 
-
 # ============================================================
-# 7. Salvar a batalha como já notificada
+# 8. SALVAR COMO NOTIFICADA
 # ============================================================
 
 with open(state_file, "w", encoding="utf-8") as f:
     f.write(battle_id)
 
-
 print("✅ Notificação enviada para o Telegram!")
+print(f"🕐 Horário da batalha: {horario}")
 print(f"✅ Batalha salva como: {battle_id}")
