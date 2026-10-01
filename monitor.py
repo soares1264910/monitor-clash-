@@ -6,7 +6,7 @@ PLAYER_TAG = "#QRG8YPJU"
 
 # Considera batalhas dos últimos 10 minutos.
 # Como o GitHub roda a cada 5 minutos, isso dá uma margem para atrasos.
-MAX_BATTLE_AGE_SECONDS = 600
+MAX_BATTLE_AGE_SECONDS = 1800
 
 CR_API_KEY = os.environ["CR_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
