@@ -16,14 +16,13 @@ jobs:
     steps:
 
       # ======================================================
-      # 1. Baixar os arquivos do repositório
+      # 1. Baixar arquivos
       # ======================================================
 
       - name: Baixar arquivos
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
 
       # ======================================================
       # 2. Configurar Python
@@ -34,7 +33,6 @@ jobs:
         with:
           python-version: "3.12"
 
-
       # ======================================================
       # 3. Instalar dependências
       # ======================================================
@@ -43,7 +41,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install requests
-
 
       # ======================================================
       # 4. Executar monitor
@@ -57,9 +54,8 @@ jobs:
         run: |
           python monitor.py
 
-
       # ======================================================
-      # 5. Salvar estado da última batalha
+      # 5. Salvar última batalha
       # ======================================================
 
       - name: Salvar última batalha
