@@ -13,7 +13,6 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 RUN_TIME = 290
 CHECK_INTERVAL = 10
-LAST_BATTLE_FILE = "last_battle.txt"
 
 API_URL = (
     "https://proxy.royaleapi.dev/v1/players/"
@@ -21,14 +20,12 @@ API_URL = (
     + "/battlelog"
 )
 
-if not CR_API_TOKEN:
-    print("❌ ERRO: CR_API_TOKEN não foi encontrado nos Secrets do GitHub.")
-    raise SystemExit(1)
+STATE_FILE = "last_battle.txt"
 
 
 def enviar_telegram(mensagem):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ ERRO: Telegram não configurado.")
+        print("❌ Telegram não configurado.")
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -44,7 +41,7 @@ def enviar_telegram(mensagem):
         if resposta.ok:
             print("✅ Mensagem enviada para o Telegram.")
         else:
-            print("❌ Erro ao enviar Telegram:")
+            print("❌ Erro no Telegram:")
             print(resposta.text)
 
     except Exception as e:
@@ -52,20 +49,19 @@ def enviar_telegram(mensagem):
 
 
 def carregar_ultima_batalha():
-    if not os.path.exists(LAST_BATTLE_FILE):
+    if not os.path.exists(STATE_FILE):
         return None
 
     try:
-        with open(LAST_BATTLE_FILE, "r", encoding="utf-8") as arquivo:
+        with open(STATE_FILE, "r", encoding="utf-8") as arquivo:
             return arquivo.read().strip()
-
     except Exception:
         return None
 
 
-def salvar_ultima_batalha(battle_id):
-    with open(LAST_BATTLE_FILE, "w", encoding="utf-8") as arquivo:
-        arquivo.write(str(battle_id))
+def salvar_ultima_batalha(battle_time):
+    with open(STATE_FILE, "w", encoding="utf-8") as arquivo:
+        arquivo.write(str(battle_time))
 
 
 def buscar_batalhas():
@@ -95,27 +91,21 @@ def buscar_batalhas():
         return []
 
 
-def identificar_batalha(batalha):
-    try:
-        team = batalha.get("team", [])
+def encontrar_batalha_do_jogador(batalhas):
+    for batalha in batalhas:
 
-        if not team:
-            return None
+        battle_time = batalha.get("battleTime")
 
-        for jogador in team:
-            jogador_tag = jogador.get("tag")
+        for jogador in batalha.get("team", []):
 
-            if jogador_tag == PLAYER_TAG:
-                return batalha.get("battleTime")
+            if jogador.get("tag") == PLAYER_TAG:
+                return battle_time
 
-        return None
-
-    except Exception as e:
-        print("❌ Erro ao identificar batalha:", e)
-        return None
+    return None
 
 
 def monitorar():
+
     print("👀 Monitorando jogador:", PLAYER_TAG)
 
     ultima_batalha = carregar_ultima_batalha()
@@ -137,15 +127,7 @@ def monitorar():
 
             print("Batalhas encontradas:", len(batalhas))
 
-            batalha_atual = None
-
-            for batalha in batalhas:
-
-                battle_id = identificar_batalha(batalha)
-
-                if battle_id:
-                    batalha_atual = battle_id
-                    break
+            batalha_atual = encontrar_batalha_do_jogador(batalhas)
 
             if batalha_atual:
 
@@ -156,7 +138,7 @@ def monitorar():
                     salvar_ultima_batalha(batalha_atual)
                     ultima_batalha = batalha_atual
 
-                    print("Primeira batalha registrada.")
+                    print("📌 Primeira batalha registrada. Nenhuma mensagem enviada.")
 
                 elif batalha_atual != ultima_batalha:
 
@@ -173,7 +155,6 @@ def monitorar():
                     ultima_batalha = batalha_atual
 
         else:
-
             print("Nenhuma batalha encontrada.")
 
         time.sleep(CHECK_INTERVAL)
