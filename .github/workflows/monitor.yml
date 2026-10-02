@@ -1,26 +1,17 @@
 name: Clash Monitor
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "*/5 * * * *"
 
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
 jobs:
-
   monitor:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Baixar arquivos
+      - name: Baixar código
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Configurar Python
         uses: actions/setup-python@v5
@@ -34,26 +25,7 @@ jobs:
 
       - name: Executar monitor
         env:
-          CR_API_KEY: ${{ secrets.CR_API_KEY }}
+          CR_API_TOKEN: ${{ secrets.CR_API_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-        run: |
-          python monitor.py
-
-      - name: Salvar última batalha
-        run: |
-
-          if git diff --quiet -- last_battle.txt; then
-            echo "Nenhuma nova batalha foi detectada."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add last_battle.txt
-
-          git commit -m "Atualizar última batalha monitorada"
-
-          git push
+        run: python monitor.py
