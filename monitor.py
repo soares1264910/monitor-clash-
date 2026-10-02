@@ -1,200 +1,203 @@
 import os
 import time
 import requests
-from datetime import datetime, timezone, timedelta
+
+print("🚀 CLASH MONITOR INICIADO")
+
+# =========================
+# CONFIGURAÇÕES
+# =========================
 
 PLAYER_TAG = "#QRG8YPJU"
 
-POLL_INTERVAL_SECONDS = 10
-RUN_TIME_SECONDS = 290
-
-CR_API_KEY = os.environ["CR_API_KEY"]
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-
-STATE_FILE = "last_battle.txt"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 API_URL = (
     "https://proxy.royaleapi.dev/v1/players/"
-    f"{requests.utils.quote(PLAYER_TAG, safe='')}/battlelog"
+    + requests.utils.quote(PLAYER_TAG, safe="")
+    + "/battlelog"
 )
 
-HEADERS = {
-    "Authorization": f"Bearer {CR_API_KEY}"
-}
+LAST_BATTLE_FILE = "last_battle.txt"
+
+# Tempo que o monitor fica rodando em cada execução
+RUN_TIME = 290
+
+# Intervalo entre consultas
+CHECK_INTERVAL = 10
 
 
-def get_last_battle():
+# =========================
+# TELEGRAM
+# =========================
+
+def enviar_telegram(mensagem):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("ERRO: variáveis do Telegram não configuradas.")
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+    data = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": mensagem
+    }
+
     try:
-        response = requests.get(
-            API_URL,
-            headers=HEADERS,
-            timeout=20
-        )
+        resposta = requests.post(url, data=data, timeout=15)
 
-        response.raise_for_status()
+        if resposta.ok:
+            print("Mensagem enviada para o Telegram.")
+        else:
+            print("Erro ao enviar Telegram:")
+            print(resposta.text)
 
-        battles = response.json()
+    except Exception as e:
+        print("Erro no Telegram:", e)
 
-        if not battles:
-            print("Nenhuma batalha encontrada.")
-            return None
 
-        return battles[0]
+# =========================
+# ÚLTIMA BATALHA REGISTRADA
+# =========================
 
-    except requests.RequestException as e:
-        print(f"Erro na API: {e}")
+def carregar_ultima_batalha():
+    if not os.path.exists(LAST_BATTLE_FILE):
+        return None
+
+    try:
+        with open(LAST_BATTLE_FILE, "r", encoding="utf-8") as arquivo:
+            return arquivo.read().strip()
+    except Exception:
         return None
 
 
-def parse_battle_time(battle_time):
-    for fmt in (
-        "%Y%m%dT%H%M%S.%fZ",
-        "%Y%m%dT%H%M%SZ"
-    ):
-        try:
-            return datetime.strptime(
-                battle_time,
-                fmt
-            ).replace(tzinfo=timezone.utc)
-        except ValueError:
-            pass
+def salvar_ultima_batalha(battle_id):
+    with open(LAST_BATTLE_FILE, "w", encoding="utf-8") as arquivo:
+        arquivo.write(str(battle_id))
+
+
+# =========================
+# BUSCAR BATTLELOG
+# =========================
+
+def buscar_batalhas():
+    try:
+        resposta = requests.get(API_URL, timeout=20)
+
+        print("Status da API:", resposta.status_code)
+
+        if resposta.status_code != 200:
+            print("Erro na API:")
+            print(resposta.text)
+            return []
+
+        return resposta.json()
+
+    except Exception as e:
+        print("Erro ao consultar Battlelog:", e)
+        return []
+
+
+# =========================
+# IDENTIFICAR BATALHA
+# =========================
+
+def identificar_batalha(batalha):
+    try:
+        jogador = batalha.get("team", [{}])[0]
+
+        jogador_tag = jogador.get("tag")
+
+        if jogador_tag != PLAYER_TAG:
+            return None
+
+        timestamp = batalha.get("battleTime")
+
+        if timestamp:
+            return timestamp
+
+    except Exception as e:
+        print("Erro ao identificar batalha:", e)
 
     return None
 
 
-def get_last_notified():
-    try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        return ""
+# =========================
+# MONITOR
+# =========================
+
+def monitorar():
+
+    print("Monitorando jogador:", PLAYER_TAG)
+
+    ultima_batalha = carregar_ultima_batalha()
+
+    if ultima_batalha:
+        print("Última batalha registrada:", ultima_batalha)
+    else:
+        print("Nenhuma batalha registrada anteriormente.")
+
+    inicio = time.time()
+
+    while time.time() - inicio < RUN_TIME:
+
+        print("Consultando Battlelog...")
+
+        batalhas = buscar_batalhas()
+
+        if batalhas:
+
+            print("Batalhas encontradas:", len(batalhas))
+
+            batalha_atual = None
+
+            for batalha in batalhas:
+
+                battle_id = identificar_batalha(batalha)
+
+                if battle_id:
+                    batalha_atual = battle_id
+                    break
+
+            if batalha_atual:
+
+                print("Batalha mais recente:", batalha_atual)
+
+                if ultima_batalha is None:
+
+                    salvar_ultima_batalha(batalha_atual)
+
+                    ultima_batalha = batalha_atual
+
+                    print("Primeira batalha registrada. Não enviando alerta.")
+
+                elif batalha_atual != ultima_batalha:
+
+                    print("NOVA BATALHA DETECTADA!")
+
+                    mensagem = (
+                        "🚨 NOVA BATALHA DETECTADA!\n\n"
+                        "O jogador começou uma nova batalha no Clash Royale."
+                    )
+
+                    enviar_telegram(mensagem)
+
+                    salvar_ultima_batalha(batalha_atual)
+
+                    ultima_batalha = batalha_atual
+
+        else:
+            print("Nenhuma batalha encontrada.")
+
+        time.sleep(CHECK_INTERVAL)
+
+    print("Monitor finalizado.")
 
 
-def save_last_notified(battle_id):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        f.write(battle_id)
+# =========================
+# INICIAR
+# =========================
 
-
-def send_telegram(message):
-    url = (
-        f"https://api.telegram.org/"
-        f"bot{TELEGRAM_TOKEN}/sendMessage"
-    )
-
-    response = requests.post(
-        url,
-        data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message
-        },
-        timeout=20
-    )
-
-    response.raise_for_status()
-
-
-def check_battle():
-
-    battle = get_last_battle()
-
-    if not battle:
-        return False
-
-    battle_time = battle.get("battleTime")
-
-    if not battle_time:
-        return False
-
-    battle_datetime = parse_battle_time(battle_time)
-
-    if not battle_datetime:
-        print(f"Formato desconhecido: {battle_time}")
-        return False
-
-    now = datetime.now(timezone.utc)
-
-    seconds_ago = (
-        now - battle_datetime
-    ).total_seconds()
-
-    print(
-        f"Última batalha: {battle_time} | "
-        f"idade: {seconds_ago:.0f}s"
-    )
-
-    if seconds_ago < 0 or seconds_ago > 600:
-        print("Batalha não é recente.")
-        return False
-
-    battle_id = battle_time
-
-    last_notified = get_last_notified()
-
-    if battle_id == last_notified:
-        print("Já notificada.")
-        return False
-
-    brasilia_time = (
-        battle_datetime - timedelta(hours=3)
-    )
-
-    inicio = brasilia_time.strftime("%H:%M:%S")
-    detectada = datetime.now().strftime("%H:%M:%S")
-
-    atraso = max(0, int(seconds_ago))
-
-    message = (
-        "🚨 BATALHA DETECTADA! 🚨\n\n"
-        "👤 O jogador iniciou uma batalha.\n"
-        f"🕐 Início registrado: {inicio}\n"
-        f"📡 Detectada: {detectada}\n"
-        f"⏱️ Diferença registrada: {atraso}s\n\n"
-        "👀 ENTRA NO CLASH AGORA!"
-    )
-
-    send_telegram(message)
-
-    save_last_notified(battle_id)
-
-    print("NOVA BATALHA!")
-    print(f"Início: {inicio}")
-    print(f"Detectada: {detectada}")
-    print(f"Atraso observado: {atraso}s")
-    print("Telegram enviado!")
-
-    return True
-
-
-print("CLASH MONITOR INICIADO")
-
-start_time = time.time()
-
-while True:
-
-    elapsed = time.time() - start_time
-
-    if elapsed >= RUN_TIME_SECONDS:
-        print("Tempo de monitoramento encerrado.")
-        break
-
-    print()
-    print(
-        f"Consultando API: "
-        f"{datetime.now().strftime('%H:%M:%S')}"
-    )
-
-    if check_battle():
-        break
-
-    elapsed = time.time() - start_time
-    remaining = RUN_TIME_SECONDS - elapsed
-
-    if remaining <= 0:
-        break
-
-    time.sleep(
-        min(POLL_INTERVAL_SECONDS, remaining)
-    )
-
-print("Monitor finalizado.")
+if __name__ == "__main__":
+    monitorar()
