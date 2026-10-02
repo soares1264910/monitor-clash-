@@ -5,13 +5,11 @@ from datetime import datetime, timezone, timedelta
 
 PLAYER_TAG = "#QRG8YPJU"
 
-# Durante cada execução do GitHub Actions,
-# consultar a API a cada 15 segundos.
+# Consulta a API a cada 15 segundos enquanto o monitor estiver ativo.
 POLL_INTERVAL_SECONDS = 15
 
-# Tempo máximo que esta execução ficará monitorando.
-# 5 minutos e 30 segundos para cobrir o intervalo entre os schedules.
-RUN_TIME_SECONDS = 330
+# O GitHub Actions executará o monitor por até 4 minutos.
+RUN_TIME_SECONDS = 240
 
 CR_API_KEY = os.environ["CR_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -30,8 +28,6 @@ HEADERS = {
 
 
 def get_last_battle():
-    """Consulta a API e retorna a batalha mais recente."""
-
     try:
         response = requests.get(
             API_URL,
@@ -55,8 +51,6 @@ def get_last_battle():
 
 
 def parse_battle_time(battle_time):
-    """Converte battleTime da API para datetime UTC."""
-
     formats = [
         "%Y%m%dT%H%M%S.%fZ",
         "%Y%m%dT%H%M%SZ"
@@ -105,6 +99,7 @@ def send_telegram(message):
 
 
 def check_battle():
+
     battle = get_last_battle()
 
     if not battle:
@@ -138,13 +133,12 @@ def check_battle():
         f"{seconds_ago:.0f} segundos."
     )
 
-    # Evita processar datas futuras.
+    # Ignora horários futuros.
     if seconds_ago < 0:
         print("Batalha com horário futuro. Ignorando.")
         return False
 
-    # Evita pegar batalhas antigas.
-    # 15 minutos dá uma margem maior para atrasos da API.
+    # Ignora batalhas muito antigas.
     if seconds_ago > 900:
         print("Batalha antiga. Ignorando.")
         return False
@@ -157,31 +151,32 @@ def check_battle():
         print("Essa batalha já foi notificada.")
         return False
 
-    # Brasília = UTC-3
+    # Converte UTC para horário de Brasília.
     brasilia_time = (
-        battle_datetime
-        - timedelta(hours=3)
+        battle_datetime - timedelta(hours=3)
     )
 
     horario = brasilia_time.strftime("%H:%M:%S")
+
+    detected_at = datetime.now().strftime("%H:%M:%S")
 
     message = (
         "🚨 BATALHA DETECTADA! 🚨\n\n"
         "👤 O jogador entrou em batalha!\n"
         f"🕐 Início registrado: {horario}\n"
-        f"⏱️ Detectada pelo monitor: "
-        f"{datetime.now().strftime('%H:%M:%S')}\n\n"
+        f"📡 Detectada pelo monitor: {detected_at}\n\n"
         "👀 ENTRA NO CLASH AGORA!"
     )
 
-    print("Enviando notificação para o Telegram...")
+    print("📨 Enviando notificação para o Telegram...")
 
     send_telegram(message)
 
     save_last_notified(battle_id)
 
-    print("✅ Telegram enviado!")
-    print(f"🕐 Início da batalha: {horario}")
+    print("✅ Notificação enviada!")
+    print(f"🕐 Horário da batalha: {horario}")
+    print(f"📡 Detectada às: {detected_at}")
     print(f"🆔 Batalha: {battle_id}")
 
     return True
@@ -213,11 +208,15 @@ while True:
         print("🎯 Nova batalha detectada!")
         break
 
+    elapsed = time.time() - start_time
     remaining = RUN_TIME_SECONDS - elapsed
+
+    if remaining <= 0:
+        break
 
     sleep_time = min(
         POLL_INTERVAL_SECONDS,
-        max(0, remaining)
+        remaining
     )
 
     print(
@@ -226,4 +225,5 @@ while True:
 
     time.sleep(sleep_time)
 
+print()
 print("✅ Monitor finalizado.")
