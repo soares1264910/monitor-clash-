@@ -8,14 +8,9 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: clash-monitor
-  cancel-in-progress: false
-
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
 
     steps:
       - name: Baixar código
